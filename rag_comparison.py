@@ -65,150 +65,154 @@ for idx, (doc, emb) in enumerate(zip(docs, doc_embeddings)):
 print("Ask anything about your documents. Type 'quit' or just press enter to exit.\n")
 
 # === INTERACTIVE LOOP STARTS HERE ===
-while True:
-    # === 5. User enters their question === ------------------------------------------------------------------------------
-    query = input("\nAsk your question: ").strip()
-    if query.lower() in ("quit", "exit", ""):
-        print("Goodbye!")
-        break
+def run_comparison():
+  while True:
+      # === 5. User enters their question === ------------------------------------------------------------------------------
+      query = input("\nAsk your question: ").strip()
+      if query.lower() in ("quit", "exit", ""):
+          print("Goodbye!")
+          break
 
-    #TODO: usar la LLM para analizar la query, extraer sentencias con significado semantico y generar una query más precisa
-    ## luego uso la query original mas las refinadas vas a tener mas embeding para luego correr la funcion de busqueda las veces que sea necesario
+      #TODO: usar la LLM para analizar la query, extraer sentencias con significado semantico y generar una query más precisa
+      ## luego uso la query original mas las refinadas vas a tener mas embeding para luego correr la funcion de busqueda las veces que sea necesario
 
-    # === 6. Embed the question as a vector ===
-    query_embedding = embedder.encode([query]).tolist()
+      # === 6. Embed the question as a vector ===
+      query_embedding = embedder.encode([query]).tolist()
 
-    # funcion de busqueda --------------------------------------------------------------------------------
-    # === 7. Retrieve top-N most similar chunks to the question ===
-    print("\n---[ CLASSIC QUERY EMBEDDING RAG ]---")
-    results = collection.query(
-        query_embeddings=query_embedding,
-        n_results=10,
-        include=["documents", "distances", "metadatas"]
-    )
+      # funcion de busqueda --------------------------------------------------------------------------------
+      # === 7. Retrieve top-N most similar chunks to the question ===
+      print("\n---[ CLASSIC QUERY EMBEDDING RAG ]---")
+      results = collection.query(
+          query_embeddings=query_embedding,
+          n_results=10,
+          include=["documents", "distances", "metadatas"]
+      )
 
-    # === 8. Filter results to only chunks containing query words (for transparency) ===
-    filtered_docs = []
-    query_words = [w.lower() for w in query.split() if len(w) > 2]  # skip very short words for relevance
+      # === 8. Filter results to only chunks containing query words (for transparency) ===
+      filtered_docs = []
+      query_words = [w.lower() for w in query.split() if len(w) > 2]  # skip very short words for relevance
 
-    print("\nRetrieved Chunks (Query Embedding):")
-    for doc, dist, meta in zip(results["documents"][0], results["distances"][0], results["metadatas"][0]):
-        highlighted_doc = highlight_match(doc, query)
-        print(f"\nChunk (distance: {dist:.4f}, source: {meta['source']}, chunk: {meta['chunk']}):")
-        print(highlighted_doc)
-        # Add to filtered_docs if any query word is in this chunk (case-insensitive)
-        if any(word in doc.lower() for word in query_words):
-            filtered_docs.append(doc)
+      print("\nRetrieved Chunks (Query Embedding):")
+      for doc, dist, meta in zip(results["documents"][0], results["distances"][0], results["metadatas"][0]):
+          highlighted_doc = highlight_match(doc, query)
+          print(f"\nChunk (distance: {dist:.4f}, source: {meta['source']}, chunk: {meta['chunk']}):")
+          print(highlighted_doc)
+          # Add to filtered_docs if any query word is in this chunk (case-insensitive)
+          if any(word in doc.lower() for word in query_words):
+              filtered_docs.append(doc)
 
-    # Fallback: If no filtered docs, use the top 3 by similarity anyway
-    if not filtered_docs:
-        filtered_docs = results["documents"][0][:3]
+      # Fallback: If no filtered docs, use the top 3 by similarity anyway
+      if not filtered_docs:
+          filtered_docs = results["documents"][0][:3]
 
-    # === 9. Build context and prompt for the LLM ===
-    context = "\n".join(filtered_docs)
-    prompt = f"""You are a helpful assistant for answering questions about the book Alice in Wonderland.
-Only use the context below to answer, and quote the relevant sentence if possible.
+      # === 9. Build context and prompt for the LLM ===
+      context = "\n".join(filtered_docs)
+      prompt = f"""You are a helpful assistant for answering questions about the book Alice in Wonderland.
+  Only use the context below to answer, and quote the relevant sentence if possible.
 
-Context:
-{context}
-Question: {query}
-Answer:"""
+  Context:
+  {context}
+  Question: {query}
+  Answer:"""
 
-    print("\nConstructed prompt for LLM:\n", prompt)
+      print("\nConstructed prompt for LLM:\n", prompt)
 
-    # === 10. Call Ollama's LLM with the prompt and show the result ===
-    ollama_response = requests.post(
-        "http://localhost:11434/api/chat",
-        json={
-            "model": "llama3",
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
-            "stream": False
-        }
-    )
+      # === 10. Call Ollama's LLM with the prompt and show the result ===
+      ollama_response = requests.post(
+          "http://localhost:11434/api/chat",
+          json={
+              "model": "llama3",
+              "messages": [
+                  {"role": "user", "content": prompt}
+              ],
+              "stream": False
+          }
+      )
 
-    response_json = ollama_response.json()
-    if "message" in response_json and "content" in response_json["message"]:
-        answer = response_json["message"]["content"]
-    elif "content" in response_json:
-        answer = response_json["content"]
-    else:
-        answer = str(response_json)
+      response_json = ollama_response.json()
+      if "message" in response_json and "content" in response_json["message"]:
+          answer = response_json["message"]["content"]
+      elif "content" in response_json:
+          answer = response_json["content"]
+      else:
+          answer = str(response_json)
 
-    print("\n[LLM Answer with Query Embedding]:", answer)
+      print("\n[LLM Answer with Query Embedding]:", answer)
 
-    # ----==[ HyDE: HYPOTHETICAL DOCUMENT EMBEDDING RAG ]==----
-    print("\n\n---[ HyDE HYPOTHETICAL DOCUMENT EMBEDDING RAG ]---")
-    hyde_prompt = f"Given the following question, write a plausible answer based only on your general knowledge (even if you need to guess):\n\nQuestion: {query}\nHypothetical Answer:"
+      # ----==[ HyDE: HYPOTHETICAL DOCUMENT EMBEDDING RAG ]==----
+      print("\n\n---[ HyDE HYPOTHETICAL DOCUMENT EMBEDDING RAG ]---")
+      hyde_prompt = f"Given the following question, write a plausible answer based only on your general knowledge (even if you need to guess):\n\nQuestion: {query}\nHypothetical Answer:"
 
-    ollama_hyde_response = requests.post(
-        "http://localhost:11434/api/chat",
-        json={
-            "model": "llama3",
-            "messages": [
-                {"role": "user", "content": hyde_prompt}
-            ],
-            "stream": False
-        }
-    )
-    hyde_json = ollama_hyde_response.json()
-    if "message" in hyde_json and "content" in hyde_json["message"]:
-        hypothetical_answer = hyde_json["message"]["content"]
-    elif "content" in hyde_json:
-        hypothetical_answer = hyde_json["content"]
-    else:
-        hypothetical_answer = query
-    print("\n[HyDE Hypothetical Answer]:", hypothetical_answer)
+      ollama_hyde_response = requests.post(
+          "http://localhost:11434/api/chat",
+          json={
+              "model": "llama3",
+              "messages": [
+                  {"role": "user", "content": hyde_prompt}
+              ],
+              "stream": False
+          }
+      )
+      hyde_json = ollama_hyde_response.json()
+      if "message" in hyde_json and "content" in hyde_json["message"]:
+          hypothetical_answer = hyde_json["message"]["content"]
+      elif "content" in hyde_json:
+          hypothetical_answer = hyde_json["content"]
+      else:
+          hypothetical_answer = query
+      print("\n[HyDE Hypothetical Answer]:", hypothetical_answer)
 
-    hyde_embedding = embedder.encode([hypothetical_answer]).tolist()
+      hyde_embedding = embedder.encode([hypothetical_answer]).tolist()
 
-    hyde_results = collection.query(
-        query_embeddings=hyde_embedding,
-        n_results=10,
-        include=["documents", "distances", "metadatas"]
-    )
+      hyde_results = collection.query(
+          query_embeddings=hyde_embedding,
+          n_results=10,
+          include=["documents", "distances", "metadatas"]
+      )
 
-    hyde_filtered_docs = []
-    hyde_words = [w.lower() for w in hypothetical_answer.split() if len(w) > 2]
-    print("\nRetrieved Chunks (HyDE Embedding):")
-    for doc, dist, meta in zip(hyde_results["documents"][0], hyde_results["distances"][0], hyde_results["metadatas"][0]):
-        highlighted_doc = highlight_match(doc, hypothetical_answer)
-        print(f"\nChunk (distance: {dist:.4f}, source: {meta['source']}, chunk: {meta['chunk']}):")
-        print(highlighted_doc)
-        if any(word in doc.lower() for word in hyde_words):
-            hyde_filtered_docs.append(doc)
-    if not hyde_filtered_docs:
-        hyde_filtered_docs = hyde_results["documents"][0][:3]
+      hyde_filtered_docs = []
+      hyde_words = [w.lower() for w in hypothetical_answer.split() if len(w) > 2]
+      print("\nRetrieved Chunks (HyDE Embedding):")
+      for doc, dist, meta in zip(hyde_results["documents"][0], hyde_results["distances"][0], hyde_results["metadatas"][0]):
+          highlighted_doc = highlight_match(doc, hypothetical_answer)
+          print(f"\nChunk (distance: {dist:.4f}, source: {meta['source']}, chunk: {meta['chunk']}):")
+          print(highlighted_doc)
+          if any(word in doc.lower() for word in hyde_words):
+              hyde_filtered_docs.append(doc)
+      if not hyde_filtered_docs:
+          hyde_filtered_docs = hyde_results["documents"][0][:3]
 
-    hyde_context = "\n".join(hyde_filtered_docs)
-    hyde_final_prompt = f"""You are a helpful assistant for answering questions about the book Alice in Wonderland.
-Only use the context below to answer, and quote the relevant sentence if possible.
+      hyde_context = "\n".join(hyde_filtered_docs)
+      hyde_final_prompt = f"""You are a helpful assistant for answering questions about the book Alice in Wonderland.
+  Only use the context below to answer, and quote the relevant sentence if possible.
 
-Context:
-{hyde_context}
-Question: {query}
-Answer:"""
+  Context:
+  {hyde_context}
+  Question: {query}
+  Answer:"""
 
-    print("\nConstructed prompt for LLM (HyDE):\n", hyde_final_prompt)
+      print("\nConstructed prompt for LLM (HyDE):\n", hyde_final_prompt)
 
-    hyde_llm_response = requests.post(
-        "http://localhost:11434/api/chat",
-        json={
-            "model": "llama3",
-            "messages": [
-                {"role": "user", "content": hyde_final_prompt}
-            ],
-            "stream": False
-        }
-    )
-    hyde_response_json = hyde_llm_response.json()
-    if "message" in hyde_response_json and "content" in hyde_response_json["message"]:
-        hyde_answer = hyde_response_json["message"]["content"]
-    elif "content" in hyde_response_json:
-        hyde_answer = hyde_response_json["content"]
-    else:
-        hyde_answer = str(hyde_response_json)
-    print("\n[LLM Answer with HyDE]:", hyde_answer)
+      hyde_llm_response = requests.post(
+          "http://localhost:11434/api/chat",
+          json={
+              "model": "llama3",
+              "messages": [
+                  {"role": "user", "content": hyde_final_prompt}
+              ],
+              "stream": False
+          }
+      )
+      hyde_response_json = hyde_llm_response.json()
+      if "message" in hyde_response_json and "content" in hyde_response_json["message"]:
+          hyde_answer = hyde_response_json["message"]["content"]
+      elif "content" in hyde_response_json:
+          hyde_answer = hyde_response_json["content"]
+      else:
+          hyde_answer = str(hyde_response_json)
+      print("\n[LLM Answer with HyDE]:", hyde_answer)
 
-    print("\n======== COMPARISON DONE! ========")
+      print("\n======== COMPARISON DONE! ========")
+
+if __name__ == "__main__":
+    run_comparison()
