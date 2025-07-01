@@ -228,5 +228,51 @@ def create_agent_rag_system():
             last_action = agent.action_history[-1]
             print(f"\n📝 Agent Action: {last_action.action_type} - {last_action.reasoning}")
 
+
+def run_agent_tests():
+    """Run specific test scenarios to evaluate agent behavior"""
+    from rag_comparison import docs, metadatas, embedder, collection
+    agent = RAGAgent(collection, embedder)
+    
+    test_queries = [
+        # Factual queries (should use direct retrieval)
+        "When was Alice in Wonderland published?",
+        "Who wrote Alice in Wonderland?",
+        
+        # Complex queries (should use multi-step)
+        "Compare Alice's character development with Victorian literary themes",
+        "How do mathematical concepts influence the story structure?",
+        
+        # Queries needing HyDE (abstract/conceptual)
+        "What psychological themes are explored in the story?",
+        "How does the story reflect Victorian society's view of childhood?",
+        
+        # Queries that might need refinement
+        "What's the deal with the cat?",
+        "Tell me about the tea party scene"
+    ]
+    
+    print("🧪 Running Agent Test Suite\n")
+    
+    for i, query in enumerate(test_queries, 1):
+        print(f"\n{'='*60}")
+        print(f"TEST {i}: {query}")
+        print('='*60)
+        
+        answer = agent.process_query(query)
+        print(f"\n✅ Answer: {answer}")
+        
+        if agent.action_history:
+            last_action = agent.action_history[-1]
+            print(f"📝 Strategy Used: {last_action.parameters.get('strategy', 'unknown')}")
+            print(f"📊 Documents Retrieved: {last_action.parameters.get('docs_retrieved', 0)}")
+        
+        input("\nPress Enter to continue to next test...")
+
 if __name__ == "__main__":
-    create_agent_rag_system()
+    # Add choice between interactive and test mode
+    choice = input("Choose mode: (1) Interactive Agent (2) Test Suite: ").strip()
+    if choice == "2":
+        run_agent_tests()
+    else:
+        create_agent_rag_system()
